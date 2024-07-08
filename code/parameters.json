@@ -2,7 +2,7 @@
     "evaluateonly": false,
     "scoringonly": false,
     "simulator_config": {
-      "simulator_type": "custom_tf",
+      "simulator_type": "intermediate_tf",
       "name": "tf_trans",
       "model": "SimpleTransformer",
       "simulator_file": "simulator",
@@ -15,6 +15,6 @@
     "simulator_extra_parameters": {},
     "training_config": {
       "epochs": 300,
-      "train_batch_size": 128
+      "train_batch_size": 32
     }
   }

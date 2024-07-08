@@ -51,7 +51,7 @@ class SimpleTransformer(TensorflowSimulator):
                  sim_config_path: str,
                  bench_config_path: Union[str, pathlib.Path],
                  bench_config_name: Union[str, None]=None,
-                 bench_kwargs: dict={},
+                 bench_kwargs: dict = dict(),
                  sim_config_name: Union[str, None]=None,
                  name: Union[str, None]=None,
                  scaler: Union[Scaler, None]=None,
@@ -79,13 +79,14 @@ class SimpleTransformer(TensorflowSimulator):
 
         # optimizer
         if "lr" in kwargs:
-            if not isinstance(kwargs["lr"], float):
-                raise RuntimeError("Learning rate (lr) is provided, it should be a float")
             lr = kwargs['lr']
         else:
             lr = self.params["optimizer"]["params"]["lr"]
 
-        self._optimizer = keras.optimizers.Lion(learning_rate=lr)
+        if not isinstance(lr, float):
+            raise RuntimeError("Learning rate (lr) is provided, it should be a float")
+
+        self._optimizer = keras.optimizers.Adam(learning_rate=lr)
 
         self._model: Union[keras.Model, None] = None
 
@@ -112,7 +113,7 @@ class SimpleTransformer(TensorflowSimulator):
                                   name=f"{self.name}_model")
         return self._model
 
-    def process_dataset(self, dataset: DataSet, training: bool=False) -> tuple:
+    def process_dataset(self, dataset: DataSet, training: bool = False) -> tuple:
         """process the datasets for training and evaluation
         This function transforms all the dataset into something that can be used by the neural network (for example)
         Warning
@@ -168,7 +169,7 @@ class SimpleTransformer(TensorflowSimulator):
         super()._save_metadata(path)
         if self.scaler is not None:
             self.scaler.save(path)
-        res_json = {}
+        res_json = dict()
         res_json["input_size"] = self.input_size
         res_json["output_size"] = self.output_size
         with open((path / "metadata.json"), "w", encoding="utf-8") as f:
@@ -184,3 +185,16 @@ class SimpleTransformer(TensorflowSimulator):
             res_json = json.load(fp=f)
         self.input_size = res_json["input_size"]
         self.output_size = res_json["output_size"]
+
+    def restore(self, path):
+        assert self.x_attr_sizes is not None, "First preprocess the data using the `process_dataset` method."
+        self.build_model()
+        self.load_model(path_model=os.path.join(path, 'model-trans.keras'), path_scaler=os.path.join(path, 'SaveScaler'))
+
+    def save_model(self, path_model: str, path_scaler: str):
+        self._model.save_weights(path_model)
+        self.scaler.save(path_scaler)
+
+    def load_model(self, path_model: str, path_scaler: str):
+        self._model.load_weights(path_model)
+        self.scaler.load(path_scaler)
