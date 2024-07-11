@@ -14,7 +14,7 @@
     },
     "simulator_extra_parameters": {},
     "training_config": {
-      "epochs": 150,
+      "epochs": 64,
       "train_batch_size": 32
     }
   }

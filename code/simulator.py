@@ -83,8 +83,7 @@ class SimpleTransformer(TensorflowSimulator):
         if not isinstance(lr, float):
             raise RuntimeError("Learning rate (lr) is provided, it should be a float")
 
-        self._optimizer = keras.optimizers.Adam(learning_rate=lr)
-
+        self._optimizer = keras.optimizers.Adam(lr, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
         self._model: Union[keras.Model, None] = None
 
         self.input_size = None if kwargs.get("input_size") is None else kwargs["input_size"]
@@ -102,7 +101,7 @@ class SimpleTransformer(TensorflowSimulator):
         super().build_model()
         transformer = TransformerEncoder(
             self.output_size, self.x_attr_sizes, self.t_attr_sizes, self.y_attr_sizes,
-            num_layers=5, d_model=256, num_heads=4, dff=128)
+            num_layers=5, d_model=512, num_heads=8, dff=512)
         input_ = keras.layers.Input(shape=(self.input_size,), name="input")
         output_ = transformer(input_)
         self._model = keras.Model(inputs=input_,

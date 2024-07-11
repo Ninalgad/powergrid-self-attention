@@ -89,8 +89,6 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         k = self.split_heads(k)  # (batch_size, num_heads, seq_len_k, depth)
         v = self.split_heads(v)  # (batch_size, num_heads, seq_len_v, depth)
 
-        # q = tf.keras.layers.GaussianNoise(.1)(q, training=training)
-        attention_weights = {}
         # scaled_attention.shape == (batch_size, num_heads, seq_len_q, depth)
         # attention_weights.shape == (batch_size, num_heads, seq_len_q, seq_len_k)
         scaled_attention, attention_weights = scaled_dot_product_attention(
@@ -116,7 +114,7 @@ def point_wise_feed_forward_network(d_model, dff):
 
 class ReZero(tf.keras.layers.Layer):
     """
-    Implementation of:
+    Implementation of `ReZero` activation function from:
     `ReZero is All You Need: Fast Convergence at Large Depth` (https://arxiv.org/abs/2003.04887)
     """
     def __init__(self, name):
@@ -143,6 +141,7 @@ class EncoderLayer(tf.keras.layers.Layer):
         self.rz2 = ReZero(self.name + 'rz2')
 
     def call(self, x, training=False, mask=None):
+
         ffn_output = self.ffn0(x)  # (batch_size, input_seq_len, d_model)
         out0 = x + self.rz0(ffn_output)
 
@@ -156,85 +155,12 @@ class EncoderLayer(tf.keras.layers.Layer):
         return out2, attention_weights
 
 
-class AttentionPool(tf.keras.layers.Layer):
-    def __init__(self, d_model, dff):
-        super(AttentionPool, self).__init__()
-        self.mha = MultiHeadAttention(d_model, num_heads=2)
-        self.ffn = point_wise_feed_forward_network(d_model, dff)
-        self.rz = ReZero(self.name + 'rz')
-        # self.layernorm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-
-    def call(self, x, t, training=False):
-        x, _ = self.mha(x, x, t, training=training)
-        out1 = tf.math.reduce_mean(x, axis=1)
-
-        ffn_output = self.ffn(out1)  # (batch_size, input_seq_len, d_model)
-        # ffn_output = self.dropout2(ffn_output, training=training)
-        # out2 = out1 + self.layernorm(ffn_output)  # (batch_size, input_seq_len, d_model)
-        out2 = out1 + self.rz(ffn_output)
-
-        return out2
-
-
-class CrossAttention(tf.keras.layers.Layer):
-    def __init__(self, d_model, dff):
-        super(CrossAttention, self).__init__()
-        self.mha = MultiHeadAttention(d_model, num_heads=2)
-        self.ffn = point_wise_feed_forward_network(d_model, dff)
-        self.rz = ReZero(self.name + 'rz')
-        # self.layernorm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-
-    def call(self, q, kv, training=False):
-        x, _ = self.mha(kv, kv, q, training=training)
-
-        ffn_output = self.ffn(x)  # (batch_size, q_seq_len, d_model)
-        out2 = q + self.rz(ffn_output)
-
-        return out2
-
-
-class TransformerEncoder(tf.keras.layers.Layer):
-    def __init__(self, output_dim, x_attr_sizes, t_attr_sizes, num_layers, d_model, num_heads, dff):
-        super(TransformerEncoder, self).__init__()
-
-        self.attr_sizes = list(x_attr_sizes) + list(t_attr_sizes)
-        self.n_tau_attr = len(t_attr_sizes)
-
-        self.embeddings = [tf.keras.layers.Dense(d_model) for _ in self.attr_sizes]
-        self.ffn = point_wise_feed_forward_network(d_model, dff)
-
-        self.enc_layers = [EncoderLayer(d_model, num_heads, dff)
-                           for _ in range(num_layers)]
-
-        self.pool = AttentionPool(d_model, dff)
-        self.output_layer = point_wise_feed_forward_network(output_dim, dff)
-
-    def call(self, x):
-        n = self.n_tau_attr
-
-        x = tf.split(x, self.attr_sizes, axis=1)
-        x = [tf.expand_dims(lay(inp), axis=1) for (lay, inp) in zip(self.embeddings, x)]
-        x, t = x[:-n], x[-n:]
-        x, t = tf.concat(x, axis=1), tf.concat(t, axis=1)
-        x = tf.concat([t, x], axis=1)
-
-        x = self.ffn(x)
-
-        for lay in self.enc_layers:
-            x, _ = lay(x)
-
-        x = self.pool(x[:, :n], x[:, :n])
-        x = self.output_layer(x)
-        return x
-
-
 class TransformerEncoder(tf.keras.layers.Layer):
     def __init__(self, output_dim, x_attr_sizes, t_attr_sizes, y_attr_sizes,
                  num_layers, d_model, num_heads, dff):
         super(TransformerEncoder, self).__init__()
-
+        self.d_model = d_model
         self.attr_sizes = list(x_attr_sizes) + list(t_attr_sizes)
-
         self.embeddings = [tf.keras.layers.Dense(d_model) for _ in self.attr_sizes]
         self.enc_layers = [EncoderLayer(d_model, num_heads, dff)
                            for _ in range(num_layers)]
@@ -244,7 +170,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
         x = tf.split(x, self.attr_sizes, axis=1)
         x = [tf.expand_dims(lay(inp), axis=1)
              for (lay, inp) in zip(self.embeddings, x)]
-        x = tf.concat(x, axis=1)
+        x = tf.concat(x, axis=1) / (self.d_model ** .5)
 
         for lay in self.enc_layers:
             x, _ = lay(x)
